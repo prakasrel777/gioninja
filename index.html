@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-RBDE1VBYBN"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-RBDE1VBYBN');
+    </script>
+    <!-- End Google Analytics -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>LubenGio Ninja</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
+    <style>
+        :root {
+            --gold: #ffcc00;
+            --bg-dim: radial-gradient(circle, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.92) 100%);
+            --safe-top: env(safe-area-inset-top);
+            --safe-right: env(safe-area-inset-right);
+            --safe-bottom: env(safe-area-inset-bottom);
+            --safe-left: env(safe-area-inset-left);
+        }
+
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #000; overflow: hidden;
+            font-family: 'Georgia', serif; user-select: none;
+            -webkit-user-select: none; touch-action: none;
+        }
+
+        canvas { display: block; }
+        
+        #ui-layer, #lose-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10; background: var(--bg-dim);
+            padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+        }
+
+        .logo-placeholder { 
+            width: min(90vw, 650px); 
+            margin-bottom: 30px; 
+            filter: drop-shadow(0 0 20px #ffcc00);
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        .btn {
+            padding: 16px 56px; font-size: clamp(1.1rem, 3vw, 2rem);
+            cursor: pointer; background: linear-gradient(145deg, #d2691e, #8b4513);
+            color: #fff; border: 4px solid #ffcc00; border-radius: 50px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            transition: 0.2s; font-weight: 900; letter-spacing: 5px; text-transform: uppercase;
+        }
+
+        .btn:active { transform: scale(0.95) translateY(5px); }
+        #lose-screen { display: none; z-index: 20; }
+        .score-display { color: var(--gold); font-size: clamp(1rem, 3.2vw, 1.8rem); margin: 6px 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <img src="assets/logo.png" alt="LUBENGIO NINJA" class="logo-placeholder" onerror="this.style.display='none'">
+        <p class="score-display" id="menu-highscore">BEST: 0</p>
+        <button class="btn" onclick="startGame()">START</button>
+    </div>
+
+    <div id="lose-screen">
+        <h1 style="color: #ff0000; font-size: clamp(3rem, 10vw, 5rem); margin: 0; text-shadow: 0 0 30px #ff0000;">ELIMINATED</h1>
+        <p id="display-score" class="score-display"></p>
+        <button class="btn" onclick="location.reload()" style="margin-top: 30px;">RETRY</button>
+    </div>
+
+<script>
+const config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+    physics: { default: 'arcade', arcade: { gravity: { y: 900 } } },
+    scene: { preload: preload, create: create, update: update }
+};
+
+let game = new Phaser.Game(config);
+let score = 0, lives = 3, level = 1, gameStarted = false, isGameOver = false;
+let items, lifeIcons = [], particles, spawnTimer, slicePoints = [];
+
+let highScore = localStorage.getItem('lubengio_best') || 0;
+document.getElementById('menu-highscore').innerText = "BEST: " + highScore;
+
+function preload() {
+    this.load.image('background', 'assets/survivor_bg.jpg');
+    this.load.image('life_img', 'assets/life.png');
+    this.load.image('belvedere', 'assets/belvedere.png');
+    this.load.image('books', 'assets/books.png');
+    this.load.image('chains', 'assets/chains.png');
+    this.load.image('coconuts', 'assets/coconuts.png');
+    this.load.image('alexandros', 'assets/alexandros.png');
+    this.load.image('bomb', 'assets/dont_do_dis.png');
+    this.load.image('spark', 'https://labs.phaser.io/assets/particles/white.png');
+    
+    this.load.audio('trap_loop', 'assets/background_trap.mp3');
+    this.load.audio('do_dis', 'assets/do_dis.wav');
+    this.load.audio('nootropia', 'assets/nootropia.wav');
+    this.load.audio('bro', 'assets/bro.wav');
+    this.load.audio('alex_snd', 'assets/alexandros.wav');
+    this.load.audio('read_snd', 'assets/read.wav');
+    this.load.audio('wrong', 'assets/wrong.wav');
+    this.load.audio('lose_sound', 'assets/lose_sound.wav');
+}
+
+function create() {
+    let bg = this.add.image(this.scale.width/2, this.scale.height/2, 'background');
+    let scale = Math.max(this.scale.width / bg.width, this.scale.height / bg.height);
+    bg.setScale(scale).setScrollFactor(0);
+
+    particles = this.add.particles(0, 0, 'spark', {
+        speed: { min: -200, max: 200 }, scale: { start: 0.4, end: 0 }, lifespan: 400, emitting: false
+    });
+
+    items = this.physics.add.group();
+    this.uiContainer = this.add.container(20, 110);
+    this.scoreLabel = this.add.text(0, 0, 'SCORE: 0', { fontSize: '36px', fill: '#ffcc00', fontStyle: 'bold', stroke: '#000', strokeThickness: 6 });
+    this.levelLabel = this.add.text(0, 45, 'LEVEL: 1', { fontSize: '24px', fill: '#fff', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 });
+    this.uiContainer.add([this.scoreLabel, this.levelLabel]);
+
+    for(let i=0; i<3; i++) {
+        let icon = this.add.image(window.innerWidth - 60 - (i * 70), 55, 'life_img').setDisplaySize(60, 60);
+        lifeIcons.push(icon);
+    }
+
+    this.trailGraphic = this.add.graphics();
+    this.input.keyboard.on('keydown-R', () => { if(isGameOver) location.reload(); });
+}
+
+function startGame() {
+    document.getElementById('ui-layer').style.display = 'none';
+    gameStarted = true;
+    if (game.scene.scenes[0].cache.audio.exists('trap_loop')) {
+        game.scene.scenes[0].sound.play('trap_loop', { loop: true, volume: 0.4 });
+    }
+    updateSpawnTimer(1100);
+}
+
+function updateSpawnTimer(delay) {
+    if (spawnTimer) spawnTimer.remove();
+    spawnTimer = game.scene.scenes[0].time.addEvent({
+        delay: delay,
+        callback: () => { if(!isGameOver) spawnItem(game.scene.scenes[0]) },
+        loop: true
+    });
+}
+
+function spawnItem(scene) {
+    const keys = ['belvedere', 'books', 'chains', 'coconuts', 'alexandros', 'bomb'];
+    const key = Phaser.Utils.Array.GetRandom(keys);
+    let item = items.create(Phaser.Math.Between(100, scene.scale.width - 100), scene.scale.height + 60, key);
+    item.setDisplaySize(115, 115);
+    item.setVelocityY(Phaser.Math.Between(-950 - (level * 25), -1250 - (level * 25)));
+    item.setVelocityX(Phaser.Math.Between(-150, 150));
+    item.setAngularVelocity(Phaser.Math.Between(-200, 200));
+}
+
+function update() {
+    if (!gameStarted || isGameOver) return;
+    let pointer = this.input.activePointer;
+    if (pointer.isDown) {
+        slicePoints.push({ x: pointer.x, y: pointer.y });
+        if (slicePoints.length > 8) slicePoints.shift();
+        this.trailGraphic.clear().lineStyle(6, 0xffffff, 1).beginPath();
+        slicePoints.forEach((p, i) => { i === 0 ? this.trailGraphic.moveTo(p.x, p.y) : this.trailGraphic.lineTo(p.x, p.y); });
+        this.trailGraphic.strokePath();
+
+        items.getChildren().forEach(item => {
+            if (Phaser.Geom.Intersects.LineToRectangle(new Phaser.Geom.Line(pointer.prevPosition.x, pointer.prevPosition.y, pointer.x, pointer.y), item.getBounds())) {
+                handleHit(item, this);
+            }
+        });
+    } else { slicePoints = []; this.trailGraphic.clear(); }
+}
+
+function handleHit(item, scene) {
+    particles.emitParticleAt(item.x, item.y, 15);
+    const itemKey = item.texture.key;
+
+    if (itemKey === 'bomb') {
+        if (scene.cache.audio.exists('wrong')) scene.sound.play('wrong');
+        lives--;
+        if(lifeIcons[lives]) scene.tweens.add({ targets: lifeIcons[lives], scale: 1.5, alpha: 0.2, duration: 200 });
+        scene.cameras.main.shake(300, 0.03);
+        if (lives <= 0) endGame(scene);
+    } else {
+        if (itemKey === 'alexandros' && scene.cache.audio.exists('alex_snd')) {
+            scene.sound.play('alex_snd');
+        } else if (itemKey === 'books' && scene.cache.audio.exists('read_snd')) {
+            scene.sound.play('read_snd');
+        } else {
+            const randomSounds = ['do_dis', 'nootropia', 'bro'];
+            const chosen = Phaser.Utils.Array.GetRandom(randomSounds);
+            if (scene.cache.audio.exists(chosen)) scene.sound.play(chosen);
+        }
+        
+        score += 10;
+        if (score % 100 === 0) {
+            level++;
+            updateSpawnTimer(Math.max(350, 1100 - (level * 60)));
+            scene.cameras.main.flash(400, 255, 204, 0, 0.4);
+        }
+        scene.scoreLabel.setText(`SCORE: ${score}`);
+        scene.levelLabel.setText(`LEVEL: ${level}`);
+    }
+    item.destroy();
+}
+
+function endGame(scene) {
+    isGameOver = true; game.sound.stopAll();
+    if (score > highScore) localStorage.setItem('lubengio_best', score);
+    if (scene.cache.audio.exists('lose_sound')) scene.sound.play('lose_sound');
+    document.getElementById('display-score').innerText = "FINAL SCORE: " + score;
+    document.getElementById('lose-screen').style.display = 'flex';
+}
+</script>
+</body>
+</html>
