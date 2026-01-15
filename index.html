@@ -215,6 +215,10 @@ let game = new Phaser.Game(config);
 let score = 0, lives = 3, level = 1, gameStarted = false, isGameOver = false;
 let items, lifeIcons = [], particles, spawnTimer, slicePoints = [];
 
+// Combo system
+let comboCount = 0, comboTimer = null, comboText = null, comboTween = null;
+const comboMessages = ['TRIPLE KILL', 'NOOTROPIA', 'OG'];
+
 // Anti-cheat: internal tracking
 let _g = { _h: 0, _t: 0, _s: 0 };
 function _v(s) { return (_g._h * 10 === s) && (_g._s === s) && (Date.now() - _g._t > s * 50); }
@@ -266,6 +270,13 @@ function create() {
     }
 
     this.trailGraphic = this.add.graphics();
+
+    // Combo text (hidden by default)
+    comboText = this.add.text(this.scale.width / 2, this.scale.height / 2, '', {
+        fontSize: '72px', fill: '#ff0000', fontStyle: 'bold',
+        stroke: '#000', strokeThickness: 8
+    }).setOrigin(0.5).setAlpha(0).setDepth(100);
+
     this.input.keyboard.on('keydown-R', () => {
         // Don't reload if typing in input
         if (document.activeElement.tagName === 'INPUT') return;
@@ -345,6 +356,16 @@ function handleHit(item, scene) {
         
         score += 10;
         _u(1); // Anti-cheat: track hit
+
+        // Combo system - 1.5 second window for combos
+        comboCount++;
+        if (comboTimer) comboTimer.remove();
+        comboTimer = scene.time.delayedCall(1500, () => { comboCount = 0; });
+
+        if (comboCount === 3) {
+            showCombo(scene, comboMessages[Math.floor(Math.random() * comboMessages.length)]);
+        }
+
         if (score % 100 === 0) {
             level++;
             updateSpawnTimer(Math.max(350, 1100 - (level * 60)));
@@ -354,6 +375,21 @@ function handleHit(item, scene) {
         scene.levelLabel.setText(`LEVEL: ${level}`);
     }
     item.destroy();
+}
+
+function showCombo(scene, message) {
+    if (comboTween) comboTween.stop();
+    comboText.setText(message).setAlpha(1).setScale(0.5);
+    comboText.setPosition(scene.scale.width / 2, scene.scale.height / 2);
+    comboTween = scene.tweens.add({
+        targets: comboText,
+        scale: 1.5,
+        alpha: 0,
+        y: comboText.y - 100,
+        duration: 1000,
+        ease: 'Power2',
+        onComplete: () => { comboCount = 0; }
+    });
 }
 
 function endGame(scene) {
