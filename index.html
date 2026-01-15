@@ -152,6 +152,25 @@
             outline: none;
         }
         #name-modal input:focus { box-shadow: 0 0 15px var(--gold); }
+
+        #leaderboard-lose {
+            background: rgba(0,0,0,0.8);
+            border: 3px solid var(--gold);
+            border-radius: 15px;
+            padding: 15px 25px;
+            margin-top: 20px;
+            min-width: 280px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        #leaderboard-lose h3 {
+            color: var(--gold);
+            margin: 0 0 10px 0;
+            text-align: center;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
     </style>
 </head>
 <body>
@@ -178,7 +197,11 @@
     <div id="lose-screen">
         <h1 style="color: #ff0000; font-size: clamp(3rem, 10vw, 5rem); margin: 0; text-shadow: 0 0 30px #ff0000;">ELIMINATED</h1>
         <p id="display-score" class="score-display"></p>
-        <button class="btn" onclick="location.reload()" style="margin-top: 30px;">RETRY</button>
+        <button class="btn" onclick="location.reload()" style="margin-top: 20px;">RETRY</button>
+        <div id="leaderboard-lose">
+            <h3>Top Ninjas</h3>
+            <div id="lb-list-lose">Loading...</div>
+        </div>
     </div>
 
 <script>
@@ -344,23 +367,31 @@ function loadLeaderboard() {
     db.ref('scores').orderByChild('score').limitToLast(10).on('value', (snapshot) => {
         const data = snapshot.val();
         const lbList = document.getElementById('lb-list');
+        const lbListLose = document.getElementById('lb-list-lose');
 
         if (!data) {
-            lbList.innerHTML = '<div style="color:#888;text-align:center;">No scores yet!</div>';
+            const emptyMsg = '<div style="color:#888;text-align:center;">No scores yet!</div>';
+            lbList.innerHTML = emptyMsg;
+            lbListLose.innerHTML = emptyMsg;
             return;
         }
 
         const scores = Object.values(data).sort((a, b) => b.score - a.score);
-        lbList.innerHTML = scores.map((entry, i) => `
+        const html = scores.map((entry, i) => `
             <div class="lb-entry">
                 <span class="lb-rank">#${i + 1}</span>
                 <span class="lb-name">${escapeHtml(entry.username)}</span>
                 <span class="lb-score">${entry.score}</span>
             </div>
         `).join('');
+
+        lbList.innerHTML = html;
+        lbListLose.innerHTML = html;
     }, (error) => {
         console.error('Leaderboard error:', error);
-        lbList.innerHTML = '<div style="color:#888;text-align:center;">Failed to load</div>';
+        const errorMsg = '<div style="color:#888;text-align:center;">Failed to load</div>';
+        document.getElementById('lb-list').innerHTML = errorMsg;
+        document.getElementById('lb-list-lose').innerHTML = errorMsg;
     });
 }
 
