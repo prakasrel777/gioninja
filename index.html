@@ -29,6 +29,22 @@
 
     <meta name="description" content="ΝΟΟΤΡΟΠΙΑ PLAY THE GAME">
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCIAJRwtFXQkWG-vv3Ou5vtQXPqDhZ7HkM",
+            authDomain: "gioninja.firebaseapp.com",
+            databaseURL: "https://gioninja-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "gioninja",
+            storageBucket: "gioninja.firebasestorage.app",
+            messagingSenderId: "363008699795",
+            appId: "1:363008699795:web:80f1e5f268179d0f520c66"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+    </script>
     <style>
         :root {
             --gold: #ffcc00;
@@ -78,6 +94,64 @@
         .btn:active { transform: scale(0.95) translateY(5px); }
         #lose-screen { display: none; z-index: 20; }
         .score-display { color: var(--gold); font-size: clamp(1rem, 3.2vw, 1.8rem); margin: 6px 0; font-weight: bold; }
+
+        /* Leaderboard styles */
+        #leaderboard {
+            background: rgba(0,0,0,0.8);
+            border: 3px solid var(--gold);
+            border-radius: 15px;
+            padding: 15px 25px;
+            margin-top: 20px;
+            min-width: 280px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        #leaderboard h3 {
+            color: var(--gold);
+            margin: 0 0 10px 0;
+            text-align: center;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        .lb-entry {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,204,0,0.3);
+            color: #fff;
+            font-size: 1rem;
+        }
+        .lb-entry:last-child { border-bottom: none; }
+        .lb-rank { color: var(--gold); font-weight: bold; width: 30px; }
+        .lb-name { flex: 1; margin: 0 10px; }
+        .lb-score { color: var(--gold); font-weight: bold; }
+
+        /* Name input modal */
+        #name-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 30;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #name-modal input {
+            padding: 15px 25px;
+            font-size: 1.5rem;
+            border: 3px solid var(--gold);
+            border-radius: 10px;
+            background: #111;
+            color: #fff;
+            text-align: center;
+            margin: 20px 0;
+            width: 250px;
+            outline: none;
+        }
+        #name-modal input:focus { box-shadow: 0 0 15px var(--gold); }
     </style>
 </head>
 <body>
@@ -86,6 +160,19 @@
         <img src="assets/logo.png?v=2" alt="LUBENGIO NINJA" class="logo-placeholder" onerror="this.style.display='none'">
         <p class="score-display" id="menu-highscore">BEST: 0</p>
         <button class="btn" onclick="startGame()">START</button>
+        <div id="leaderboard">
+            <h3>Top Ninjas</h3>
+            <div id="lb-list">Loading...</div>
+        </div>
+    </div>
+
+    <div id="name-modal">
+        <h1 style="color: #ff0000; font-size: clamp(2.5rem, 8vw, 4rem); margin: 0; text-shadow: 0 0 30px #ff0000;">ELIMINATED</h1>
+        <p id="modal-score" class="score-display"></p>
+        <p style="color: #fff; margin: 10px 0;">Enter your name for the leaderboard:</p>
+        <input type="text" id="player-name" maxlength="15" placeholder="Your name" onkeydown="if(event.key==='Enter')submitScore()">
+        <button class="btn" onclick="submitScore()">SUBMIT</button>
+        <button class="btn" style="margin-top: 10px; background: #333;" onclick="skipSubmit()">SKIP</button>
     </div>
 
     <div id="lose-screen">
@@ -153,7 +240,13 @@ function create() {
     }
 
     this.trailGraphic = this.add.graphics();
-    this.input.keyboard.on('keydown-R', () => { if(isGameOver) location.reload(); });
+    this.input.keyboard.on('keydown-R', () => {
+        // Don't reload if typing in input
+        if (document.activeElement.tagName === 'INPUT') return;
+        if (isGameOver && document.getElementById('name-modal').style.display === 'none') {
+            location.reload();
+        }
+    });
 }
 
 function startGame() {
@@ -239,9 +332,74 @@ function endGame(scene) {
     isGameOver = true; game.sound.stopAll();
     if (score > highScore) localStorage.setItem('lubengio_best', score);
     if (scene.cache.audio.exists('lose_sound')) scene.sound.play('lose_sound');
+
+    // Show name modal instead of lose screen
+    document.getElementById('modal-score').innerText = "FINAL SCORE: " + score;
+    document.getElementById('name-modal').style.display = 'flex';
+    document.getElementById('player-name').focus();
+}
+
+// Leaderboard functions
+function loadLeaderboard() {
+    db.ref('scores').orderByChild('score').limitToLast(10).on('value', (snapshot) => {
+        const data = snapshot.val();
+        const lbList = document.getElementById('lb-list');
+
+        if (!data) {
+            lbList.innerHTML = '<div style="color:#888;text-align:center;">No scores yet!</div>';
+            return;
+        }
+
+        const scores = Object.values(data).sort((a, b) => b.score - a.score);
+        lbList.innerHTML = scores.map((entry, i) => `
+            <div class="lb-entry">
+                <span class="lb-rank">#${i + 1}</span>
+                <span class="lb-name">${escapeHtml(entry.username)}</span>
+                <span class="lb-score">${entry.score}</span>
+            </div>
+        `).join('');
+    }, (error) => {
+        console.error('Leaderboard error:', error);
+        lbList.innerHTML = '<div style="color:#888;text-align:center;">Failed to load</div>';
+    });
+}
+
+function submitScore() {
+    const nameInput = document.getElementById('player-name');
+    const username = nameInput.value.trim() || 'Anonymous';
+
+    // Generate unique ID for write-once rule
+    const scoreId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    db.ref('scores/' + scoreId).set({
+        username: username.substring(0, 19),
+        score: score
+    }).then(() => {
+        showLoseScreen();
+    }).catch((err) => {
+        console.error('Failed to submit score:', err);
+        showLoseScreen();
+    });
+}
+
+function skipSubmit() {
+    showLoseScreen();
+}
+
+function showLoseScreen() {
+    document.getElementById('name-modal').style.display = 'none';
     document.getElementById('display-score').innerText = "FINAL SCORE: " + score;
     document.getElementById('lose-screen').style.display = 'flex';
 }
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Load leaderboard on page load
+loadLeaderboard();
 </script>
 </body>
 </html>
