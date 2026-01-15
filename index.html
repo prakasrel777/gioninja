@@ -27,7 +27,7 @@
         html, body {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background-color: #000; overflow: hidden;
-            font-family: 'Georgia', serif; user-select: none;
+            font-family: 'Arial', sans-serif; user-select: none;
             -webkit-user-select: none; touch-action: none;
         }
 
@@ -68,7 +68,7 @@
 <body>
 
     <div id="ui-layer">
-        <img src="assets/logo.png" alt="LUBENGIO NINJA" class="logo-placeholder" onerror="this.style.display='none'">
+        <img src="assets/logo.png?v=2" alt="LUBENGIO NINJA" class="logo-placeholder" onerror="this.style.display='none'">
         <p class="score-display" id="menu-highscore">BEST: 0</p>
         <button class="btn" onclick="startGame()">START</button>
     </div>
@@ -105,7 +105,7 @@ function preload() {
     this.load.image('coconuts', 'assets/coconuts.png');
     this.load.image('alexandros', 'assets/alexandros.png');
     this.load.image('bomb', 'assets/dont_do_dis.png');
-    this.load.image('spark', 'https://labs.phaser.io/assets/particles/white.png');
+    this.load.image('spark', 'assets/spark.png');
     
     this.load.audio('trap_loop', 'assets/background_trap.mp3');
     this.load.audio('do_dis', 'assets/do_dis.wav');
