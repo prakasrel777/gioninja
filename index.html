@@ -363,21 +363,29 @@ function endGame(scene) {
 }
 
 // Leaderboard functions
+let cachedScores = [];
+let lowestTopScore = 0;
+
 function loadLeaderboard() {
-    db.ref('scores').orderByChild('score').limitToLast(10).on('value', (snapshot) => {
+    db.ref('scores').orderByChild('score').limitToLast(50).on('value', (snapshot) => {
         const data = snapshot.val();
         const lbList = document.getElementById('lb-list');
         const lbListLose = document.getElementById('lb-list-lose');
 
         if (!data) {
+            cachedScores = [];
+            lowestTopScore = 0;
             const emptyMsg = '<div style="color:#888;text-align:center;">No scores yet!</div>';
             lbList.innerHTML = emptyMsg;
             lbListLose.innerHTML = emptyMsg;
             return;
         }
 
-        const scores = Object.values(data).sort((a, b) => b.score - a.score);
-        const html = scores.map((entry, i) => `
+        cachedScores = Object.entries(data).map(([key, val]) => ({ key, ...val }));
+        cachedScores.sort((a, b) => b.score - a.score);
+        lowestTopScore = cachedScores.length >= 50 ? cachedScores[49].score : 0;
+
+        const html = cachedScores.map((entry, i) => `
             <div class="lb-entry">
                 <span class="lb-rank">#${i + 1}</span>
                 <span class="lb-name">${escapeHtml(entry.username)}</span>
@@ -395,9 +403,19 @@ function loadLeaderboard() {
     });
 }
 
+function isTop50Score(playerScore) {
+    return cachedScores.length < 50 || playerScore > lowestTopScore;
+}
+
 function submitScore() {
     const nameInput = document.getElementById('player-name');
     const username = nameInput.value.trim() || 'Anonymous';
+
+    // Only write if it's a top 50 score
+    if (!isTop50Score(score)) {
+        showLoseScreen();
+        return;
+    }
 
     // Generate unique ID for write-once rule
     const scoreId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -406,6 +424,11 @@ function submitScore() {
         username: username.substring(0, 19),
         score: score
     }).then(() => {
+        // If we now have more than 50, delete the lowest
+        if (cachedScores.length >= 50) {
+            const lowestKey = cachedScores[cachedScores.length - 1].key;
+            db.ref('scores/' + lowestKey).remove();
+        }
         showLoseScreen();
     }).catch((err) => {
         console.error('Failed to submit score:', err);
