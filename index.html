@@ -32,19 +32,7 @@
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-    <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyCIAJRwtFXQkWG-vv3Ou5vtQXPqDhZ7HkM",
-            authDomain: "gioninja.firebaseapp.com",
-            databaseURL: "https://gioninja-default-rtdb.europe-west1.firebasedatabase.app",
-            projectId: "gioninja",
-            storageBucket: "gioninja.firebasestorage.app",
-            messagingSenderId: "363008699795",
-            appId: "1:363008699795:web:80f1e5f268179d0f520c66"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-    </script>
+    <script src="firebase-config.js"></script>
     <style>
         :root {
             --gold: #ffcc00;
@@ -218,6 +206,12 @@ let game = new Phaser.Game(config);
 let score = 0, lives = 3, level = 1, gameStarted = false, isGameOver = false;
 let items, lifeIcons = [], particles, spawnTimer, slicePoints = [];
 
+// Anti-cheat: internal tracking
+let _g = { _h: 0, _t: 0, _s: 0 };
+function _v(s) { return (_g._h * 10 === s) && (_g._s === s) && (Date.now() - _g._t > s * 50); }
+function _u(d) { _g._h += d; _g._s += d * 10; }
+function _r() { _g._h = 0; _g._s = 0; _g._t = Date.now(); }
+
 let highScore = localStorage.getItem('lubengio_best') || 0;
 document.getElementById('menu-highscore').innerText = "BEST: " + highScore;
 
@@ -275,6 +269,7 @@ function create() {
 function startGame() {
     document.getElementById('ui-layer').style.display = 'none';
     gameStarted = true;
+    _r(); // Reset anti-cheat counters
     if (game.scene.scenes[0].cache.audio.exists('trap_loop')) {
         game.scene.scenes[0].sound.play('trap_loop', { loop: true, volume: 0.4 });
     }
@@ -340,6 +335,7 @@ function handleHit(item, scene) {
         }
         
         score += 10;
+        _u(1); // Anti-cheat: track hit
         if (score % 100 === 0) {
             level++;
             updateSpawnTimer(Math.max(350, 1100 - (level * 60)));
@@ -407,34 +403,31 @@ function isTop50Score(playerScore) {
     return cachedScores.length < 50 || playerScore > lowestTopScore;
 }
 
+// Obfuscated submit
+function _xS(n, s, v) {
+    if (!v || !isTop50Score(s)) { _eS(); return; }
+
+    const id = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    db.ref('scores/' + id).set({
+        username: n.substring(0, 19),
+        score: s
+    }).then(() => {
+        // Cleanup old scores if needed
+        if (cachedScores.length >= 50) {
+            db.ref('scores/' + cachedScores[cachedScores.length - 1].key).remove().catch(() => {});
+        }
+        _eS();
+    }).catch(() => _eS());
+}
+
+// Public submit - validates before calling real submit
 function submitScore() {
     const nameInput = document.getElementById('player-name');
     const username = nameInput.value.trim() || 'Anonymous';
-
-    // Only write if it's a top 50 score
-    if (!isTop50Score(score)) {
-        showLoseScreen();
-        return;
-    }
-
-    // Generate unique ID for write-once rule
-    const scoreId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-
-    db.ref('scores/' + scoreId).set({
-        username: username.substring(0, 19),
-        score: score
-    }).then(() => {
-        // If we now have more than 50, delete the lowest
-        if (cachedScores.length >= 50) {
-            const lowestKey = cachedScores[cachedScores.length - 1].key;
-            db.ref('scores/' + lowestKey).remove();
-        }
-        showLoseScreen();
-    }).catch((err) => {
-        console.error('Failed to submit score:', err);
-        showLoseScreen();
-    });
+    _xS(username, score, _v(score));
 }
+
+function _eS() { showLoseScreen(); }
 
 function skipSubmit() {
     showLoseScreen();
@@ -454,6 +447,11 @@ function escapeHtml(text) {
 
 // Load leaderboard on page load
 loadLeaderboard();
+
+// Anti-tamper
+Object.defineProperty(window, 'score', { get: () => 0, set: () => {}, configurable: false });
+Object.defineProperty(window, '_g', { get: () => ({}), set: () => {}, configurable: false });
+Object.defineProperty(window, '_xS', { get: () => () => {}, set: () => {}, configurable: false });
 </script>
 </body>
 </html>
