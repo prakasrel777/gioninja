@@ -404,6 +404,7 @@ function endGame(scene) {
 }
 
 // Leaderboard functions
+const MAX_SCORE = 50000;
 let cachedScores = [];
 let lowestTopScore = 0;
 
@@ -450,11 +451,11 @@ function isTop50Score(playerScore) {
 
 // Obfuscated submit
 function _xS(n, s, v) {
-    if (!v || !isTop50Score(s)) { _eS(); return; }
+    if (!v || !isTop50Score(s) || s > MAX_SCORE || s < 10 || s % 10 !== 0) { _eS(); return; }
 
     const id = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     db.ref('scores/' + id).set({
-        username: n.substring(0, 19),
+        username: n.substring(0, 20),
         score: s
     }).then(() => {
         // Cleanup old scores if needed
